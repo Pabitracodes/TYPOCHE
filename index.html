@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>Typoche.</title>
+    <link rel="stylesheet" href="./style.css">
+
+  </head>
+    
+  <body>
+  <!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TYPOCHE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Doto:ROND=0&family=Doto:ROND=100&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .portfolio-link {
+      color: #FFE600;
+      text-decoration: none;
+      font-size: inherit;
+      font-family: inherit;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: opacity 0.2s ease;
+    }
+    .portfolio-link:hover {
+      opacity: 0.7;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="noise-canvas"></canvas>
+  <div id="glyph-corner"></div>
+
+  <div class="container">
+
+    <!-- HEADER -->
+    <header>
+      <div class="logo" data-text="TYPEX">TYPOCHE</div>
+      <nav class="header-nav">
+        <button class="nav-btn" id="history-toggle-btn" onclick="toggleHistory()">LOG</button>
+        <button class="nav-btn theme-toggle" id="theme-btn" onclick="toggleTheme()">
+          <span id="theme-label">LIGHT</span>
+        </button>
+      </nav>
+    </header>
+
+    <!-- PIXEL GLYPH DECORATION BAR -->
+    <div class="glyph-bar" id="glyph-bar">█░░░░█░░░░█░░░░█░░░░█░░░░█░░░░█░░░░█░░░░█░░░░█</div>
+
+    <!-- MODE SELECTOR -->
+    <div class="mode-bar">
+      <div class="mode-group">
+        <button class="mode-tab" data-mode="time" data-val="15"  onclick="setMode(this,'time',15)">15s</button>
+        <button class="mode-tab" data-mode="time" data-val="30"  onclick="setMode(this,'time',30)">30s</button>
+        <button class="mode-tab active" data-mode="time" data-val="60"  onclick="setMode(this,'time',60)">60s</button>
+        <button class="mode-tab" data-mode="time" data-val="120" onclick="setMode(this,'time',120)">120s</button>
+      </div>
+      <div class="mode-divider"></div>
+      <div class="mode-group">
+        <button class="mode-tab" data-mode="words" data-val="10" onclick="setMode(this,'words',10)">10w</button>
+        <button class="mode-tab" data-mode="words" data-val="25" onclick="setMode(this,'words',25)">25w</button>
+        <button class="mode-tab" data-mode="words" data-val="50" onclick="setMode(this,'words',50)">50w</button>
+      </div>
+      <div class="mode-divider"></div>
+      <div class="mode-group">
+        <button class="mode-tab mode-tab--free" data-mode="free" data-val="0" onclick="setMode(this,'free',0)">free</button>
+      </div>
+    </div>
+
+    <!-- PROGRESS BAR -->
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+
+    <!-- LIVE STATS -->
+    <div class="live-stats">
+      <div class="live-timer" id="live-timer">60</div>
+      <div class="live-inline-stats">
+        <span class="stat-chip">WPM <strong id="live-wpm">—</strong></span>
+        <span class="stat-chip">RAW <strong id="live-raw">—</strong></span>
+      </div>
+    </div>
+
+    <!-- TYPING AREA -->
+    <div class="typing-zone" id="typing-zone" onclick="focusInput()">
+      <div class="word-display" id="word-display">
+        <span class="loading-dots">loading</span>
+      </div>
+      <input
+        id="hidden-input"
+        type="text"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        tabindex="0"
+      />
+    </div>
+
+    <!-- KEYBOARD HINTS -->
+    <div class="key-hints">
+      <span><kbd>tab</kbd> restart</span>
+      <span><kbd>esc</kbd> new quote</span>
+      <span><kbd>click</kbd> focus</span>
+    </div>
+
+    <!-- RESULTS PANEL -->
+    <section class="results-panel" id="results-panel" aria-hidden="true">
+      <div class="results-grid" id="results-grid"></div>
+      <div class="results-actions">
+        <button class="btn-primary" onclick="restartTest()">↺ RETRY</button>
+        <button class="btn-secondary" onclick="loadNewQuote()">NEW QUOTE</button>
+      </div>
+    </section>
+
+    <!-- HISTORY PANEL -->
+    <section class="history-panel" id="history-panel" aria-hidden="true">
+      <div class="history-header">
+        <span>TEST LOG</span>
+        <button class="clear-btn" onclick="clearHistory()">CLEAR ALL</button>
+      </div>
+      <div class="history-body" id="history-body"></div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+      <span>TYPOCHE — nothing aesthetic</span>
+      <span id="quote-author">—</span>
+      <a class="portfolio-link" href="https://pvbitrv.vercel.app/" target="_blank" rel="noopener noreferrer">PVBITRV</a>
+    </footer>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
+    <script  src="./script.js"></script>
+
+  </body>
+  
+</html>
