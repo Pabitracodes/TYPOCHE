@@ -50,26 +50,9 @@
 
 <div align="center">
 
-**[ LIVE DEMO →](https://pvbitrv.vercel.app/)**
+**[ LIVE DEMO →](https://typoche.vercel.app/)**
 
 </div>
-
----
-
-## █░░ GETTING STARTED
-
-```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/typoche.git
-
-# Navigate into it
-cd typoche
-
-# Open in browser (no build step needed)
-open index.html
-```
-
-> No dependencies. No `npm install`. Just open and type.
 
 ---
 
