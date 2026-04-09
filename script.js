@@ -17,9 +17,9 @@ const state = {
   startTime:    null,
   timer:        null,
   liveInterval: null,
-  mode:         'auto',
-  modeVal:      0,
-  timeLeft:     0,
+  mode:         'time',
+  modeVal:      60,
+  timeLeft:     60,
 
   /*
    * ACCURACY MODEL (fixed):
@@ -64,48 +64,70 @@ const glyphCorner  = $('glyph-corner');
 const glyphBar     = $('glyph-bar');
 const themeLabel   = $('theme-label');
 
-let caretLineOffset = 0;
-
 /* ═══════════════════════════════════════════════════════════════
-   QUOTES
+   QUOTES  —  local english.json (offline-first, no API key)
 ═══════════════════════════════════════════════════════════════ */
 
-const REAL_FALLBACK = [
-  { content: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
-  { content: "In the middle of every difficulty lies opportunity.", author: "Albert Einstein" },
-  { content: "It does not matter how slowly you go as long as you do not stop.", author: "Confucius" },
-  { content: "Life is what happens when you are busy making other plans.", author: "John Lennon" },
-  { content: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" },
-  { content: "Spread love everywhere you go. Let no one ever come to you without leaving happier.", author: "Mother Teresa" },
-  { content: "When you reach the end of your rope, tie a knot in it and hang on.", author: "Franklin D. Roosevelt" },
-  { content: "Do not go where the path may lead, go instead where there is no path and leave a trail.", author: "Ralph Waldo Emerson" },
-  { content: "You will face many defeats in life, but never let yourself be defeated.", author: "Maya Angelou" },
-  { content: "The greatest glory in living lies not in never falling, but in rising every time we fall.", author: "Nelson Mandela" },
-  { content: "In the end it is not the years in your life that count. It is the life in your years.", author: "Abraham Lincoln" },
-  { content: "Never let the fear of striking out keep you from playing the game.", author: "Babe Ruth" },
-  { content: "Simplicity is the ultimate sophistication.", author: "Leonardo da Vinci" },
-  { content: "Design is not just what it looks like and feels like. Design is how it works.", author: "Steve Jobs" },
-  { content: "Everything should be made as simple as possible, but not simpler.", author: "Albert Einstein" },
-  { content: "The details are not the details. They make the design.", author: "Charles Eames" },
+/* Loaded once at boot; all subsequent picks are instant */
+let _jsonQuotes  = null;   /* full quotes array from english.json  */
+let _jsonWords   = null;   /* flat word pool extracted on demand    */
+
+async function loadEnglishJson() {
+  if (_jsonQuotes) return;           /* already loaded */
+  try {
+    const res  = await fetch('./english.json');
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    _jsonQuotes = data.quotes || [];  /* [{text, source, length, id}, …] */
+  } catch {
+    _jsonQuotes = [];
+  }
+}
+
+/* Pick a random quote whose length fits 80-240 chars */
+function pickRandomQuote() {
+  if (!_jsonQuotes || !_jsonQuotes.length) return null;
+  const pool = _jsonQuotes.filter(q => q.length >= 60 && q.length <= 240);
+  if (!pool.length) return _jsonQuotes[Math.floor(Math.random() * _jsonQuotes.length)];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/* Build a word list from all quotes (used by words mode) */
+function getWordPool() {
+  if (_jsonWords) return _jsonWords;
+  if (!_jsonQuotes || !_jsonQuotes.length) return [];
+  const all = _jsonQuotes.map(q => q.text).join(' ');
+  _jsonWords = [...new Set(all.split(/\s+/).filter(w => w.length >= 2 && w.length <= 12))];
+  return _jsonWords;
+}
+
+const HARDCODED_FALLBACK = [
+  { text: "The only way to do great work is to love what you do.", source: "Steve Jobs" },
+  { text: "In the middle of every difficulty lies opportunity.", source: "Albert Einstein" },
+  { text: "It does not matter how slowly you go as long as you do not stop.", source: "Confucius" },
+  { text: "Simplicity is the ultimate sophistication.", source: "Leonardo da Vinci" },
+  { text: "Design is not just what it looks like and feels like. Design is how it works.", source: "Steve Jobs" },
+  { text: "The details are not the details. They make the design.", source: "Charles Eames" },
 ];
 
-let monkeytypeQuotes = null;
-
 async function fetchQuote() {
-  if (!monkeytypeQuotes) {
-    try {
-      const res = await fetch('https://raw.githubusercontent.com/monkeytypegame/monkeytype/master/frontend/static/quotes/english.json');
-      if (!res.ok) throw new Error('api error');
-      const data = await res.json();
-      monkeytypeQuotes = data.quotes;
-    } catch {
-      monkeytypeQuotes = REAL_FALLBACK;
-    }
-  }
+  await loadEnglishJson();
+  const q = pickRandomQuote()
+    || HARDCODED_FALLBACK[Math.floor(Math.random() * HARDCODED_FALLBACK.length)];
+  quoteAuthor.textContent = '— ' + (q.source || '—');
+  return cleanText(q.text);
+}
 
-  const q = monkeytypeQuotes[Math.floor(Math.random() * monkeytypeQuotes.length)];
-  quoteAuthor.textContent = '— ' + (q.source || q.author || '—');
-  return cleanText(q.text || q.content);
+/* Words mode: pull N random words from the json pool */
+async function fetchWordList(n) {
+  await loadEnglishJson();
+  const pool = getWordPool();
+  if (!pool.length) return null;          /* fall back to quote-based words */
+  const out = [];
+  while (out.length < n) {
+    out.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  return out;
 }
 
 function cleanText(raw) {
@@ -127,17 +149,24 @@ async function loadNewQuote() {
   hidePanel(historyPanel);
   wordDisplay.innerHTML = '<span class="loading-dots">loading</span>';
 
-  const raw  = await fetchQuote();
-  let words  = raw.split(' ');
+  let words;
 
   if (state.mode === 'words') {
-    while (words.length < state.modeVal) words = [...words, ...raw.split(' ')];
-    words = words.slice(0, state.modeVal);
-  } else if (state.mode === 'auto') {
-    // Approx 40 WPM gives generous time limit based on length
-    state.modeVal = Math.max(10, Math.ceil(raw.length / 3.3));
-    state.timeLeft = state.modeVal;
-    liveTimer.textContent = state.modeVal;
+    /* Try to get words directly from the json word pool */
+    const pool = await fetchWordList(state.modeVal);
+    if (pool) {
+      quoteAuthor.textContent = '— english.json';
+      words = pool;
+    } else {
+      /* Fallback: slice words from a fetched quote */
+      const raw = await fetchQuote();
+      words = raw.split(' ');
+      while (words.length < state.modeVal) words = [...words, ...raw.split(' ')];
+      words = words.slice(0, state.modeVal);
+    }
+  } else {
+    const raw = await fetchQuote();
+    words = raw.split(' ');
   }
 
   state.text       = words.join(' ');
@@ -154,8 +183,6 @@ async function loadNewQuote() {
 function renderText(skipAnim = false) {
   wordDisplay.innerHTML = '';
   wordDisplay.classList.remove('glitch-in');
-  caretLineOffset = 0;
-  wordDisplay.style.transform = 'translateY(0)';
 
   for (let i = 0; i < state.text.length; i++) {
     const ch   = state.text[i];
@@ -163,21 +190,15 @@ function renderText(skipAnim = false) {
     span.dataset.idx = i;
 
     if (ch === ' ') {
-      span.className = 'char char-space';
+      span.className = 'char char-space' + (i === 0 ? ' cursor' : '');
       span.innerHTML = '&nbsp;';
     } else {
-      span.className   = 'char';
+      span.className   = 'char' + (i === 0 ? ' cursor' : '');
       span.textContent = ch;
     }
 
     wordDisplay.appendChild(span);
   }
-
-  // Create caret inside wordDisplay
-  const caret = document.createElement('div');
-  caret.id = 'caret';
-  caret.className = 'caret';
-  wordDisplay.appendChild(caret);
 
   if (!skipAnim) {
     const chars = wordDisplay.querySelectorAll('.char');
@@ -191,7 +212,6 @@ function renderText(skipAnim = false) {
   }
 
   updateProgress();
-  refreshChars();
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -215,9 +235,8 @@ function resetState() {
   state.errorSet      = new Set();
   state.wpmSamples    = [];
   state.timeLeft      = state.modeVal;
-  state.fetchingFree  = false;
 
-  liveTimer.textContent    = (state.mode === 'time' || state.mode === 'auto') ? String(state.modeVal) : '—';
+  liveTimer.textContent    = state.mode === 'time' ? String(state.modeVal) : '—';
   liveTimer.classList.remove('urgent');
   liveWpm.textContent      = '—';
   liveRaw.textContent      = '—';
@@ -246,73 +265,10 @@ hiddenInput.addEventListener('input',   handleInput);
 
 function handleKeyDown(e) {
   if (state.finished) return;
-  
-  if (!state.started && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-     startTest();
-  }
-
   if (e.key === 'Backspace') {
     e.preventDefault();
-    if (e.ctrlKey || e.altKey) {
-        handleCtrlBackspace();
-    } else {
-        handleBackspace();
-    }
-  } else if (e.key === ' ') {
-    const expectedCh = state.text[state.charIndex];
-    if (expectedCh !== ' ') {
-      // Space typed but not expected -> skip to next word
-      e.preventDefault();
-      let nextSpaceIdx = state.text.indexOf(' ', state.charIndex);
-      if (nextSpaceIdx === -1) {
-        return; // End of quote, ignore space
-      }
-      
-      // Mark skipped chars as wrong
-      while (state.charIndex < nextSpaceIdx) {
-        state.charStatus[state.charIndex] = 'wrong';
-        state.errorSet.add(state.charIndex);
-        state.totalAttempts++;
-        state.charIndex++;
-      }
-      
-      // Mark the space itself as correct to jump
-      state.charStatus[state.charIndex] = 'correct';
-      state.totalAttempts++;
-      state.totalCorrect++;
-      state.correctKeys++;
-      state.charIndex++;
-
-      hiddenInput.value = state.text.slice(0, state.charIndex);
-      refreshChars();
-      updateProgress();
-      
-      if (state.mode === 'words' && state.charIndex >= state.text.length) {
-        finishTest();
-      }
-    }
+    handleBackspace();
   }
-}
-
-function handleCtrlBackspace() {
-  if (state.charIndex === 0) return;
-  
-  let t = state.charIndex - 1;
-  while (t > 0 && state.text[t] === ' ') t--; // skip spaces
-  while (t > 0 && state.text[t] !== ' ') t--; // jump to word start
-  if (t > 0) t++; // be ON the first char of the word
-  
-  while (state.charIndex > t) {
-    state.charIndex--;
-    if (state.charStatus[state.charIndex] === 'correct') {
-      state.correctKeys--;
-    }
-    state.charStatus[state.charIndex] = 'pending';
-  }
-  
-  hiddenInput.value = state.text.slice(0, state.charIndex);
-  refreshChars();
-  updateProgress();
 }
 
 function handleBackspace() {
@@ -388,81 +344,29 @@ function handleInput() {
   if (state.mode === 'words' && state.charIndex >= state.text.length) {
     finishTest();
   }
-
-  if (state.mode === 'free' && state.text.length - state.charIndex < 40 && !state.fetchingFree) {
-    state.fetchingFree = true;
-    fetchQuote().then(q => {
-      const oldLen = state.text.length;
-      state.text += ' ' + q;
-      state.charStatus.length = state.text.length;
-      state.charStatus.fill('pending', oldLen);
-      
-      const caret = document.getElementById('caret');
-      
-      const sp = document.createElement('span');
-      sp.dataset.idx = oldLen;
-      sp.className = 'char char-space';
-      sp.innerHTML = '&nbsp;';
-      wordDisplay.insertBefore(sp, caret);
-      
-      for (let i = 0; i < q.length; i++) {
-        const span = document.createElement('span');
-        span.dataset.idx = oldLen + 1 + i;
-        span.className = 'char';
-        span.textContent = q[i];
-        wordDisplay.insertBefore(span, caret);
-      }
-      
-      state.fetchingFree = false;
-    });
-  }
 }
 
 /* ── REFRESH DISPLAY ─────────────────────────────────────────── */
 function refreshChars() {
   const chars = wordDisplay.querySelectorAll('.char');
-  if (!chars.length) return;
+
+  const oldEnd = wordDisplay.querySelector('.char-cursor-end');
+  if (oldEnd) oldEnd.remove();
 
   chars.forEach((c, i) => {
-    c.classList.remove('correct', 'wrong');
+    c.classList.remove('correct', 'wrong', 'cursor');
     if (i < state.charIndex) {
       c.classList.add(state.charStatus[i] === 'correct' ? 'correct' : 'wrong');
     }
   });
 
-  const caret = $('caret');
-  if (!caret) return;
-
-  let activeChar;
-  let isEOF = false;
-
   if (state.charIndex < chars.length) {
-    activeChar = chars[state.charIndex];
+    chars[state.charIndex].classList.add('cursor');
   } else {
-    activeChar = chars[chars.length - 1];
-    isEOF = true;
+    const end = document.createElement('span');
+    end.className = 'char-cursor-end';
+    wordDisplay.appendChild(end);
   }
-
-  const rT = activeChar.offsetTop;
-  let rL = activeChar.offsetLeft;
-  
-  if (isEOF) {
-    rL += activeChar.offsetWidth;
-  }
-
-  // Smooth Y Scrolling for Caret Line
-  // Assuming line height ~45px. 1st line=0, 2nd=~45, 3rd=~90.
-  if (rT > 60) {
-    caretLineOffset = rT - 45; // keep visual caret on 2nd line
-  } else if (rT < 20) {
-    caretLineOffset = 0;       // reset to top
-  }
-  
-  wordDisplay.style.transform = `translateY(-${caretLineOffset}px)`;
-  
-  caret.style.top = (rT + 4) + 'px'; // +4 to center slightly
-  caret.style.left = rL + 'px';
-  caret.classList.remove('d-none');
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -473,7 +377,7 @@ function startTest() {
   state.started   = true;
   state.startTime = Date.now();
 
-  if (state.mode === 'time' || state.mode === 'auto') {
+  if (state.mode === 'time') {
     state.timeLeft = state.modeVal;
     state.timer = setInterval(() => {
       state.timeLeft--;
@@ -506,7 +410,7 @@ function tickLiveStats() {
   liveWpm.textContent = wpm > 0 ? wpm : '—';
   liveRaw.textContent = raw > 0 ? raw : '—';
 
-  if (state.mode === 'time' || state.mode === 'auto') {
+  if (state.mode === 'time') {
     const pct = ((state.modeVal - state.timeLeft) / state.modeVal) * 100;
     progressFill.style.width = Math.min(pct, 100) + '%';
   }
@@ -515,7 +419,7 @@ function tickLiveStats() {
 function updateProgress() {
   if (state.mode === 'words') {
     progressFill.style.width = Math.min((state.charIndex / state.text.length) * 100, 100) + '%';
-  } else if ((state.mode === 'time' || state.mode === 'auto') && state.started) {
+  } else if (state.mode === 'time' && state.started) {
     const pct = ((state.modeVal - state.timeLeft) / state.modeVal) * 100;
     progressFill.style.width = Math.min(pct, 100) + '%';
   }
@@ -550,7 +454,7 @@ function finishTest() {
     : 0;
 
   const consistency   = calcConsistency();
-  const time          = (state.mode === 'time' || state.mode === 'auto') ? state.modeVal : Math.round(elapsed);
+  const time          = state.mode === 'time' ? state.modeVal : Math.round(elapsed);
   const uniqueErrors  = state.errorSet.size;
 
   progressFill.style.width = '100%';
