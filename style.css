@@ -14,12 +14,12 @@
   --bg:         #0d0d0d;
   --fg:         #f5f5f5;
   --muted:      #2a2a2a;
-  --muted-text: #444444;
+  --muted-text: #777777;
   --card-bg:    #111111;
   --border:     #1e1e1e;
 
   /* typing colour states — dark mode */
-  --char-pending: #3d3d3d;   /* grey: not yet typed            */
+  --char-pending: #666666;   /* improved contrast grey: not yet typed */
   --char-correct: #f5f5f5;   /* bright white: correctly typed  */
   --char-wrong:   #ff2222;   /* red: wrong keystroke           */
 
@@ -30,12 +30,12 @@
   --bg:         #f5f5f5;
   --fg:         #0d0d0d;
   --muted:      #d8d8d8;
-  --muted-text: #999999;
+  --muted-text: #777777;
   --card-bg:    #ebebeb;
   --border:     #cccccc;
 
   /* typing colour states — light mode */
-  --char-pending: #bbbbbb;   /* visible medium grey on white bg */
+  --char-pending: #999999;   /* better contrast grey on white bg */
   --char-correct: #0d0d0d;   /* near-black: correctly typed     */
   --char-wrong:   #ff2222;   /* red: wrong keystroke            */
 
@@ -343,6 +343,12 @@ header {
 }
 
 /* ── WORD DISPLAY ─────────────────────────────────────────── */
+.words-wrapper {
+  position: relative;
+  height: 8.4rem;
+  overflow: hidden;
+}
+
 .word-display {
   font-variation-settings: 'ROND' 0;
   font-size: 1.55rem;
@@ -351,10 +357,9 @@ header {
   word-spacing: 0.55em;
   /* Default color for text not yet rendered as chars */
   color: var(--char-pending);
-  min-height: 8.4rem;
-  overflow: hidden;
   position: relative;
   user-select: none;
+  transition: transform 0.25s ease;
 }
 
 /* LOADING ANIMATION */
@@ -410,28 +415,24 @@ header {
   color: var(--char-wrong) !important;
 }
 
-/* ── PIXEL CURSOR ─────────────────────────────────────────── */
-.char.cursor::before {
-  content: '';
+/* ── PIXEL CURSOR (SMOOTH) ────────────────────────────────── */
+.caret {
   position: absolute;
-  left: -1px;
-  top: 0.22em;
-  bottom: 0.22em;
   width: 2px;
+  height: 1.6rem;
   background: var(--cursor);
+  border-radius: 0;
   animation: cursor-blink 0.85s steps(1) infinite;
-  image-rendering: pixelated;
+  transition: top 0.1s ease-out, left 0.1s ease-out;
+  pointer-events: none;
+  z-index: 10;
+}
+.caret.d-none {
+  display: none !important;
 }
 
-/* Cursor at end of all text */
-.char-cursor-end {
-  display: inline-block;
-  width: 2px;
-  height: 1.25em;
-  background: var(--cursor);
-  vertical-align: middle;
-  margin-left: 1px;
-  animation: cursor-blink 0.85s steps(1) infinite;
+.char.cursor {
+  /* legacy class kept for JS logic, but pseudo removed */
 }
 
 @keyframes cursor-blink {
