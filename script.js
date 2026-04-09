@@ -17,9 +17,9 @@ const state = {
   startTime:    null,
   timer:        null,
   liveInterval: null,
-  mode:         'time',
-  modeVal:      60,
-  timeLeft:     60,
+  mode:         'auto',
+  modeVal:      0,
+  timeLeft:     0,
 
   /*
    * ACCURACY MODEL (fixed):
@@ -64,6 +64,8 @@ const glyphCorner  = $('glyph-corner');
 const glyphBar     = $('glyph-bar');
 const themeLabel   = $('theme-label');
 
+let caretLineOffset = 0;
+
 /* ═══════════════════════════════════════════════════════════════
    QUOTES
 ═══════════════════════════════════════════════════════════════ */
@@ -87,21 +89,23 @@ const REAL_FALLBACK = [
   { content: "The details are not the details. They make the design.", author: "Charles Eames" },
 ];
 
+let monkeytypeQuotes = null;
+
 async function fetchQuote() {
-  try {
-    const res = await fetch(
-      'https://api.quotable.io/quotes/random?limit=1&minLength=80&maxLength=200'
-    );
-    if (!res.ok) throw new Error('api error');
-    const data = await res.json();
-    const q    = data[0];
-    quoteAuthor.textContent = '— ' + (q.author || '—');
-    return cleanText(q.content);
-  } catch {
-    const q = REAL_FALLBACK[Math.floor(Math.random() * REAL_FALLBACK.length)];
-    quoteAuthor.textContent = '— ' + q.author;
-    return cleanText(q.content);
+  if (!monkeytypeQuotes) {
+    try {
+      const res = await fetch('https://raw.githubusercontent.com/monkeytypegame/monkeytype/master/frontend/static/quotes/english.json');
+      if (!res.ok) throw new Error('api error');
+      const data = await res.json();
+      monkeytypeQuotes = data.quotes;
+    } catch {
+      monkeytypeQuotes = REAL_FALLBACK;
+    }
   }
+
+  const q = monkeytypeQuotes[Math.floor(Math.random() * monkeytypeQuotes.length)];
+  quoteAuthor.textContent = '— ' + (q.source || q.author || '—');
+  return cleanText(q.text || q.content);
 }
 
 function cleanText(raw) {
@@ -129,6 +133,11 @@ async function loadNewQuote() {
   if (state.mode === 'words') {
     while (words.length < state.modeVal) words = [...words, ...raw.split(' ')];
     words = words.slice(0, state.modeVal);
+  } else if (state.mode === 'auto') {
+    // Approx 40 WPM gives generous time limit based on length
+    state.modeVal = Math.max(10, Math.ceil(raw.length / 3.3));
+    state.timeLeft = state.modeVal;
+    liveTimer.textContent = state.modeVal;
   }
 
   state.text       = words.join(' ');
@@ -145,6 +154,8 @@ async function loadNewQuote() {
 function renderText(skipAnim = false) {
   wordDisplay.innerHTML = '';
   wordDisplay.classList.remove('glitch-in');
+  caretLineOffset = 0;
+  wordDisplay.style.transform = 'translateY(0)';
 
   for (let i = 0; i < state.text.length; i++) {
     const ch   = state.text[i];
@@ -152,15 +163,21 @@ function renderText(skipAnim = false) {
     span.dataset.idx = i;
 
     if (ch === ' ') {
-      span.className = 'char char-space' + (i === 0 ? ' cursor' : '');
+      span.className = 'char char-space';
       span.innerHTML = '&nbsp;';
     } else {
-      span.className   = 'char' + (i === 0 ? ' cursor' : '');
+      span.className   = 'char';
       span.textContent = ch;
     }
 
     wordDisplay.appendChild(span);
   }
+
+  // Create caret inside wordDisplay
+  const caret = document.createElement('div');
+  caret.id = 'caret';
+  caret.className = 'caret';
+  wordDisplay.appendChild(caret);
 
   if (!skipAnim) {
     const chars = wordDisplay.querySelectorAll('.char');
@@ -174,6 +191,7 @@ function renderText(skipAnim = false) {
   }
 
   updateProgress();
+  refreshChars();
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -197,8 +215,9 @@ function resetState() {
   state.errorSet      = new Set();
   state.wpmSamples    = [];
   state.timeLeft      = state.modeVal;
+  state.fetchingFree  = false;
 
-  liveTimer.textContent    = state.mode === 'time' ? String(state.modeVal) : '—';
+  liveTimer.textContent    = (state.mode === 'time' || state.mode === 'auto') ? String(state.modeVal) : '—';
   liveTimer.classList.remove('urgent');
   liveWpm.textContent      = '—';
   liveRaw.textContent      = '—';
@@ -227,10 +246,73 @@ hiddenInput.addEventListener('input',   handleInput);
 
 function handleKeyDown(e) {
   if (state.finished) return;
+  
+  if (!state.started && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+     startTest();
+  }
+
   if (e.key === 'Backspace') {
     e.preventDefault();
-    handleBackspace();
+    if (e.ctrlKey || e.altKey) {
+        handleCtrlBackspace();
+    } else {
+        handleBackspace();
+    }
+  } else if (e.key === ' ') {
+    const expectedCh = state.text[state.charIndex];
+    if (expectedCh !== ' ') {
+      // Space typed but not expected -> skip to next word
+      e.preventDefault();
+      let nextSpaceIdx = state.text.indexOf(' ', state.charIndex);
+      if (nextSpaceIdx === -1) {
+        return; // End of quote, ignore space
+      }
+      
+      // Mark skipped chars as wrong
+      while (state.charIndex < nextSpaceIdx) {
+        state.charStatus[state.charIndex] = 'wrong';
+        state.errorSet.add(state.charIndex);
+        state.totalAttempts++;
+        state.charIndex++;
+      }
+      
+      // Mark the space itself as correct to jump
+      state.charStatus[state.charIndex] = 'correct';
+      state.totalAttempts++;
+      state.totalCorrect++;
+      state.correctKeys++;
+      state.charIndex++;
+
+      hiddenInput.value = state.text.slice(0, state.charIndex);
+      refreshChars();
+      updateProgress();
+      
+      if (state.mode === 'words' && state.charIndex >= state.text.length) {
+        finishTest();
+      }
+    }
   }
+}
+
+function handleCtrlBackspace() {
+  if (state.charIndex === 0) return;
+  
+  let t = state.charIndex - 1;
+  while (t > 0 && state.text[t] === ' ') t--; // skip spaces
+  while (t > 0 && state.text[t] !== ' ') t--; // jump to word start
+  if (t > 0) t++; // be ON the first char of the word
+  
+  while (state.charIndex > t) {
+    state.charIndex--;
+    if (state.charStatus[state.charIndex] === 'correct') {
+      state.correctKeys--;
+    }
+    state.charStatus[state.charIndex] = 'pending';
+  }
+  
+  hiddenInput.value = state.text.slice(0, state.charIndex);
+  refreshChars();
+  updateProgress();
 }
 
 function handleBackspace() {
@@ -306,29 +388,81 @@ function handleInput() {
   if (state.mode === 'words' && state.charIndex >= state.text.length) {
     finishTest();
   }
+
+  if (state.mode === 'free' && state.text.length - state.charIndex < 40 && !state.fetchingFree) {
+    state.fetchingFree = true;
+    fetchQuote().then(q => {
+      const oldLen = state.text.length;
+      state.text += ' ' + q;
+      state.charStatus.length = state.text.length;
+      state.charStatus.fill('pending', oldLen);
+      
+      const caret = document.getElementById('caret');
+      
+      const sp = document.createElement('span');
+      sp.dataset.idx = oldLen;
+      sp.className = 'char char-space';
+      sp.innerHTML = '&nbsp;';
+      wordDisplay.insertBefore(sp, caret);
+      
+      for (let i = 0; i < q.length; i++) {
+        const span = document.createElement('span');
+        span.dataset.idx = oldLen + 1 + i;
+        span.className = 'char';
+        span.textContent = q[i];
+        wordDisplay.insertBefore(span, caret);
+      }
+      
+      state.fetchingFree = false;
+    });
+  }
 }
 
 /* ── REFRESH DISPLAY ─────────────────────────────────────────── */
 function refreshChars() {
   const chars = wordDisplay.querySelectorAll('.char');
-
-  const oldEnd = wordDisplay.querySelector('.char-cursor-end');
-  if (oldEnd) oldEnd.remove();
+  if (!chars.length) return;
 
   chars.forEach((c, i) => {
-    c.classList.remove('correct', 'wrong', 'cursor');
+    c.classList.remove('correct', 'wrong');
     if (i < state.charIndex) {
       c.classList.add(state.charStatus[i] === 'correct' ? 'correct' : 'wrong');
     }
   });
 
+  const caret = $('caret');
+  if (!caret) return;
+
+  let activeChar;
+  let isEOF = false;
+
   if (state.charIndex < chars.length) {
-    chars[state.charIndex].classList.add('cursor');
+    activeChar = chars[state.charIndex];
   } else {
-    const end = document.createElement('span');
-    end.className = 'char-cursor-end';
-    wordDisplay.appendChild(end);
+    activeChar = chars[chars.length - 1];
+    isEOF = true;
   }
+
+  const rT = activeChar.offsetTop;
+  let rL = activeChar.offsetLeft;
+  
+  if (isEOF) {
+    rL += activeChar.offsetWidth;
+  }
+
+  // Smooth Y Scrolling for Caret Line
+  // Assuming line height ~45px. 1st line=0, 2nd=~45, 3rd=~90.
+  if (rT > 60) {
+    caretLineOffset = rT - 45; // keep visual caret on 2nd line
+  } else if (rT < 20) {
+    caretLineOffset = 0;       // reset to top
+  }
+  
+  wordDisplay.style.transform = `translateY(-${caretLineOffset}px)`;
+  
+  caret.style.top = (rT + 4) + 'px'; // +4 to center slightly
+  caret.style.left = rL + 'px';
+  caret.classList.remove('d-none');
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -339,7 +473,7 @@ function startTest() {
   state.started   = true;
   state.startTime = Date.now();
 
-  if (state.mode === 'time') {
+  if (state.mode === 'time' || state.mode === 'auto') {
     state.timeLeft = state.modeVal;
     state.timer = setInterval(() => {
       state.timeLeft--;
@@ -372,7 +506,7 @@ function tickLiveStats() {
   liveWpm.textContent = wpm > 0 ? wpm : '—';
   liveRaw.textContent = raw > 0 ? raw : '—';
 
-  if (state.mode === 'time') {
+  if (state.mode === 'time' || state.mode === 'auto') {
     const pct = ((state.modeVal - state.timeLeft) / state.modeVal) * 100;
     progressFill.style.width = Math.min(pct, 100) + '%';
   }
@@ -381,7 +515,7 @@ function tickLiveStats() {
 function updateProgress() {
   if (state.mode === 'words') {
     progressFill.style.width = Math.min((state.charIndex / state.text.length) * 100, 100) + '%';
-  } else if (state.mode === 'time' && state.started) {
+  } else if ((state.mode === 'time' || state.mode === 'auto') && state.started) {
     const pct = ((state.modeVal - state.timeLeft) / state.modeVal) * 100;
     progressFill.style.width = Math.min(pct, 100) + '%';
   }
@@ -416,7 +550,7 @@ function finishTest() {
     : 0;
 
   const consistency   = calcConsistency();
-  const time          = state.mode === 'time' ? state.modeVal : Math.round(elapsed);
+  const time          = (state.mode === 'time' || state.mode === 'auto') ? state.modeVal : Math.round(elapsed);
   const uniqueErrors  = state.errorSet.size;
 
   progressFill.style.width = '100%';
